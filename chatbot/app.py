@@ -13,6 +13,7 @@ from ollamaApi import get_llm_models, model_capabilities, chat_with_llm
 ## Define the audio recognization model. More at: https://alphacephei.com/vosk/models
 lang_model = os.environ.get("AUDIO_MODEL", "en-in")
 ollama_url = "http://localhost:11434"
+llm_list = []
 selected_llm = "llama3.2:latest" # will make it dynamic in next version
 
 # Load the speach recognization model
@@ -27,11 +28,24 @@ except Exception as e:
 def set_ollama_url(url):
     """Sets the Ollama URL and hides the URL input screen, shows the chatbot."""
     global ollama_url
+    global llm_list
+    global selected_llm
     if len(url) >= 8:
         ollama_url = url
     print(f"Ollama URL set to: {ollama_url}")
+    api_llm_list = get_llm_models(url=ollama_url)
+    if len(api_llm_list) >= 1:
+        llm_list = api_llm_list
+        selected_llm = llm_list[0] # selects the first llm from the list
+        print(llm_list)
     # Return updates to hide the URL input and show the chatbot
-    return gr.update(visible=False), gr.update(visible=True)
+    return gr.update(visible=False), gr.update(visible=True), gr.update(choices=llm_list, value=selected_llm)
+
+def change_llm(llm_select):
+    global selected_llm 
+    selected_llm = llm_select
+    print(f"Selected llm: {selected_llm}")
+    return gr.update(value=llm_select)
 
 def gradio_to_ollama_messages(gradio_history: list[list[str, str | None]]):
     """
@@ -142,8 +156,15 @@ with gr.Blocks() as demo:
         set_url_button = gr.Button("Connect to Ollama")
 
     with gr.Group(visible=False) as chatbot_screen:
-        chatbot = gr.Chatbot()
         state = gr.State([])
+        with gr.Row():
+            llm_dropdown = gr.Dropdown(
+                choices=[],
+                show_label=False,
+                interactive=True,
+                allow_custom_value=False
+            )
+        chatbot = gr.Chatbot(height=500)
         with gr.Row():
             txt = gr.Textbox(show_label=False, lines=1, interactive=True, placeholder="Enter text here...", scale=4)
             send_button = gr.Button("➤", scale=1)
@@ -153,7 +174,14 @@ with gr.Blocks() as demo:
     set_url_button.click(
         fn=set_ollama_url,
         inputs=ollama_url_textbox,
-        outputs=[url_input_screen, chatbot_screen] # Hide URL screen, show chatbot screen
+        outputs=[url_input_screen, chatbot_screen, llm_dropdown] # Hide URL screen, show chatbot screen
+    )
+
+    # change llm model
+    llm_dropdown.select(
+        fn = change_llm,
+        inputs = llm_dropdown,
+        outputs = llm_dropdown
     )
 
     # For text input:
