@@ -7,10 +7,13 @@ import os
 from vosk import KaldiRecognizer, Model
 
 # Import local AI components
-from langAi import chat_with_langchain_agent
+from ollamaApi import get_llm_models, model_capabilities, chat_with_llm
 
-# Define the audio recognization model. More at: https://alphacephei.com/vosk/models
+# Global variables
+## Define the audio recognization model. More at: https://alphacephei.com/vosk/models
 lang_model = os.environ.get("AUDIO_MODEL", "en-in")
+ollama_url = "http://localhost:11434"
+selected_llm = "llama3.2:latest" # will make it dynamic in next version
 
 # Load the speach recognization model
 try:
@@ -20,13 +23,44 @@ except Exception as e:
     print(f"Error loading Vosk model: {e}")
     model = None
 
+# set ollama url
+def set_ollama_url(url):
+    """Sets the Ollama URL and hides the URL input screen, shows the chatbot."""
+    global ollama_url
+    if len(url) >= 8:
+        ollama_url = url
+    print(f"Ollama URL set to: {ollama_url}")
+    # Return updates to hide the URL input and show the chatbot
+    return gr.update(visible=False), gr.update(visible=True)
+
+def gradio_to_ollama_messages(gradio_history: list[list[str, str | None]]):
+    """
+    Converts Gradio chat history (list of dicts) into a list of Ollama messages.
+    """
+    ollama_messages = []
+    for user_msg, bot_msg in gradio_history:
+        if user_msg is not None:
+            ollama_messages.append({
+                "role": "user",
+                "content": f"{user_msg}"
+            })
+        if bot_msg is not None:
+            ollama_messages.append({
+                "role": "assistant",
+                "content": f"{user_msg}"
+            })
+    return ollama_messages
+
 # Handles the Text Inputs
 def process_text_input(message, history):
     """
     Processes the text input from UI & passes to the backend AI Agent
     """
-    updated_history = chat_with_langchain_agent(message=message, history=history)
-    return updated_history, updated_history, "" # also clears the text input
+    history.append([message, None])
+    message_history = gradio_to_ollama_messages(gradio_history=history)
+    llm_resp = chat_with_llm(url=ollama_url, model=selected_llm, messages=message_history)
+    history[-1][1] = llm_resp["content"]
+    return history, history, "" # also clears the text input
 
 # Handles the Audio using VOSK module
 def process_audio_input(audio_data_tuple, history):
@@ -84,7 +118,10 @@ def process_audio_input(audio_data_tuple, history):
     else: # all went well
         # Simulate bot response based on transcribed text
         user_message = f"{transcribed_text}"
-        history = chat_with_langchain_agent(message=user_message, history=history)
+        history.append([user_message, None])
+        message_history = gradio_to_ollama_messages(gradio_history=history)
+        llm_resp = chat_with_llm(url=ollama_url, model=selected_llm, messages=message_history)
+        history[-1][1] = llm_resp["content"]
 
     if(fail_flag): # If we get any error during the process
         history.append([user_message, None])
@@ -95,14 +132,29 @@ def process_audio_input(audio_data_tuple, history):
 
 # UI using gradio
 with gr.Blocks() as demo:
-    chatbot = gr.Chatbot()
-    state = gr.State([])
+    with gr.Group(visible=True) as url_input_screen:
+        gr.Markdown("# Welcome to the Ollama Chatbot!")
+        gr.Markdown("Please enter the URL of your running Ollama instance.")
+        ollama_url_textbox = gr.Textbox(
+            label="Ollama Server URL (defaults to http://localhost:11434)",
+            placeholder="http://localhost:11434"
+        )
+        set_url_button = gr.Button("Connect to Ollama")
 
-    with gr.Row():
-        txt = gr.Textbox(show_label=False, lines=1, interactive=True, placeholder="Enter text here...", scale=4)
-        send_button = gr.Button("➤", scale=1)
-    # Type="numpy" means audio_data will be (sample_rate, numpy_array)
-    audio_in = gr.Audio(sources=["microphone"], type="numpy", show_label=False, scale=1)
+    with gr.Group(visible=False) as chatbot_screen:
+        chatbot = gr.Chatbot()
+        state = gr.State([])
+        with gr.Row():
+            txt = gr.Textbox(show_label=False, lines=1, interactive=True, placeholder="Enter text here...", scale=4)
+            send_button = gr.Button("➤", scale=1)
+        # Type="numpy" means audio_data will be (sample_rate, numpy_array)
+        audio_in = gr.Audio(sources=["microphone"], type="numpy", show_label=False, scale=1)
+
+    set_url_button.click(
+        fn=set_ollama_url,
+        inputs=ollama_url_textbox,
+        outputs=[url_input_screen, chatbot_screen] # Hide URL screen, show chatbot screen
+    )
 
     # For text input:
     txt.submit(

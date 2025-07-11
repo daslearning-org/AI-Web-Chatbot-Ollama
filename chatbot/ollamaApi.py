@@ -48,6 +48,7 @@ def chat_with_llm(url, model, messages):
     try:
         response = requests.post(chat_url, json=msg_body)
         respDict = response.json()
+        #print(respDict) ## for debugging
         if "message" in respDict:
             return respDict["message"]
         else:
