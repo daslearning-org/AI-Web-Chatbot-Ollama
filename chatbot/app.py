@@ -15,7 +15,7 @@ from ollamaApi import get_llm_models, model_capabilities, chat_with_llm
 lang_model = os.environ.get("AUDIO_MODEL", "en-in")
 ollama_url = "http://localhost:11434"
 llm_list = []
-selected_llm = "llama3.2:latest" # will make it dynamic in next version
+selected_llm = None
 
 # Load the speach recognization model
 try:
@@ -35,18 +35,27 @@ def set_ollama_url(url):
         ollama_url = url
     print(f"Ollama URL set to: {ollama_url}")
     api_llm_list = get_llm_models(url=ollama_url)
+    llm_capabilities = []
     if len(api_llm_list) >= 1:
         llm_list = api_llm_list
         selected_llm = llm_list[0] # selects the first llm from the list
+        llm_capabilities = model_capabilities(url=ollama_url, model=selected_llm)
         print(llm_list)
     # Return updates to hide the URL input and show the chatbot
-    return gr.update(visible=False), gr.update(visible=True), gr.update(choices=llm_list, value=selected_llm)
+    if "vision" in llm_capabilities:
+        return gr.update(visible=False), gr.update(visible=True), gr.update(choices=llm_list, value=selected_llm), gr.update(sources="upload")
+    else:
+        return gr.update(visible=False), gr.update(visible=True), gr.update(choices=llm_list, value=selected_llm), gr.update(sources=[])
 
 def change_llm(llm_select):
     global selected_llm 
     selected_llm = llm_select
     print(f"Selected llm: {selected_llm}")
-    return gr.update(value=llm_select)
+    llm_capabilities = model_capabilities(url=ollama_url, model=selected_llm)
+    if "vision" in llm_capabilities:
+        return gr.update(value=llm_select), gr.update(sources="upload")
+    else:
+        return gr.update(value=llm_select), gr.update(sources=[])
 
 def image_to_base64(image_path):
     if not os.path.exists(image_path):
@@ -73,15 +82,26 @@ def process_text_input(message, history):
 
     if message["text"] is not None:
         history.append({"role": "user", "content": message["text"]})
-    else:
+    elif len(message["files"]) >= 1:
         history.append({"role": "user", "content": "explain this"})
-    message_history = history
+    message_history = []
+    img_list = []
+    for single_msg in history:
+        if type(single_msg["content"]) is not dict: # ignoring the path in message_history for ollama
+            message_history.append({
+                "role": single_msg["role"],
+                "content": single_msg["content"]
+            })
+        else:
+            message_history.append({"role": "user", "content": "image base64 data"})
     for file in message["files"]:
         history.append({"role": "user", "content": {"path": file}})
         img_b64 = image_to_base64(file)
-        message_history[-1]["images"] = [img_b64]
+        img_list.append(f"{img_b64}")
+        message_history[-1]["images"] = img_list
     llm_resp = chat_with_llm(url=ollama_url, model=selected_llm, messages=message_history)
     history.append(llm_resp)
+    print(history)
     return history, gr.update(value={"text": "", "files": []}, interactive=True) # also clears the text input
 
 # Handles the Audio using VOSK module
@@ -136,7 +156,16 @@ def process_audio_input(audio_data_tuple, history):
         # Simulate bot response based on transcribed text
         user_message = f"{transcribed_text}"
         history.append({"role": "user", "content": user_message})
-        llm_resp = chat_with_llm(url=ollama_url, model=selected_llm, messages=history)
+        message_history = []
+        for single_msg in history:
+            if type(single_msg["content"]) is not dict: # ignoring the path in message_history for ollama
+                message_history.append({
+                    "role": single_msg["role"],
+                    "content": single_msg["content"]
+                })
+            else:
+                message_history.append({"role": "user", "content": "image base64 data"})
+        llm_resp = chat_with_llm(url=ollama_url, model=selected_llm, messages=message_history)
         history.append(llm_resp)
 
     if(fail_flag): # If we get any error during the process
@@ -173,21 +202,21 @@ with gr.Blocks(title="DasLearning Ollama Chat") as demo:
             file_types=['image'],
             placeholder="Ask anything and you can upload image file",
             show_label=False,
-            sources="upload" # [] #"upload",
+            sources=[] #"upload",
         )
         audio_in = gr.Audio(sources=["microphone"], type="numpy", show_label=False)
 
     set_url_button.click(
         fn=set_ollama_url,
         inputs=ollama_url_textbox,
-        outputs=[url_input_screen, chatbot_screen, llm_dropdown] # Hide URL screen, show chatbot screen
+        outputs=[url_input_screen, chatbot_screen, llm_dropdown, img_n_txt] # Hide URL screen, show chatbot screen
     )
 
     # change llm model
     llm_dropdown.select(
         fn = change_llm,
         inputs = llm_dropdown,
-        outputs = llm_dropdown
+        outputs = [llm_dropdown, img_n_txt]
     )
 
     # For text input:
