@@ -87,13 +87,11 @@ def process_text_input(message, history):
     message_history = []
     img_list = []
     for single_msg in history:
-        if type(single_msg["content"]) is not dict: # ignoring the path in message_history for ollama
+        if type(single_msg["content"]) is not tuple: # ignoring the path in message_history for ollama
             message_history.append({
                 "role": single_msg["role"],
                 "content": single_msg["content"]
             })
-        else:
-            message_history.append({"role": "user", "content": "image base64 data"})
     for file in message["files"]:
         history.append({"role": "user", "content": {"path": file}})
         img_b64 = image_to_base64(file)
@@ -101,7 +99,6 @@ def process_text_input(message, history):
         message_history[-1]["images"] = img_list
     llm_resp = chat_with_llm(url=ollama_url, model=selected_llm, messages=message_history)
     history.append(llm_resp)
-    print(history)
     return history, gr.update(value={"text": "", "files": []}, interactive=True) # also clears the text input
 
 # Handles the Audio using VOSK module
@@ -158,13 +155,11 @@ def process_audio_input(audio_data_tuple, history):
         history.append({"role": "user", "content": user_message})
         message_history = []
         for single_msg in history:
-            if type(single_msg["content"]) is not dict: # ignoring the path in message_history for ollama
+            if type(single_msg["content"]) is not tuple: # ignoring the path in message_history for ollama
                 message_history.append({
                     "role": single_msg["role"],
                     "content": single_msg["content"]
                 })
-            else:
-                message_history.append({"role": "user", "content": "image base64 data"})
         llm_resp = chat_with_llm(url=ollama_url, model=selected_llm, messages=message_history)
         history.append(llm_resp)
 
@@ -193,7 +188,7 @@ with gr.Blocks(title="DasLearning Ollama Chat") as demo:
                 interactive=True,
                 allow_custom_value=False
             )
-        chatbot = gr.Chatbot(height=500, type="messages")
+        chatbot = gr.Chatbot(height=450, type="messages")
         # inputs
         img_n_txt = gr.MultimodalTextbox(
             interactive=True,

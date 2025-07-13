@@ -53,14 +53,14 @@ def chat_with_llm(url, model, messages):
             return respDict["message"]
         else:
             return_resp = {
-                "role": "error",
+                "role": "assistant",
                 "content": "**Error** in LLM response!"
             }
             return return_resp
     except Exception as e:
         print(f"Error with Ollama: {e}")
         return_resp = {
-            "role": "error",
+            "role": "assistant",
             "content": f"**Error** with Ollama: {e}"
         }
         return return_resp
