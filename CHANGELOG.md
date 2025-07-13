@@ -1,5 +1,8 @@
 # Changes
 
+## v0.2.1
+- Adding `dockerignore` file to automatically ignore files or folders which are not required
+
 ## v0.2.0
 - Adding multimodal support i.e. image (with vision models only) & voice support
 
